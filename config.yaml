@@ -44,7 +44,7 @@ raw_files:                         # the Zindi extract names the logistics file 
   dictionary: data_dictionary.csv
 
 readme_path: README.md
-app_url:                           # filled in after deployment
+app_url: https://stockoutsentinel.up.railway.app/
 region_min_rows: 50                # smallest region shown in the README's WAPE range
 
 paths:                             # relative to the repo root

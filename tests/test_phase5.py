@@ -60,6 +60,22 @@ def test_results_table_is_filled_from_the_metrics():
     assert len(table.splitlines()) == 7
 
 
+def test_bias_text_orders_tiers_and_limits_regions():
+    rows = [
+        ("volume_tier", "1", 0.7, 100), ("volume_tier", "2", 0.6, 100), ("volume_tier", "3", 0.5, 100),
+        ("quality_tier", "1", 0.4, 100), ("quality_tier", "2", 0.5, 100), ("quality_tier", "3", 0.6, 100),
+        ("region", "A", 0.3, 100), ("region", "B", 0.9, 100), ("region", "TINY", 5.0, 3),
+    ]
+    metrics = pd.DataFrame([
+        {"scope": "common", "model": "lightgbm", "slice": s, "slice_value": v, "wape": w, "rows_scored": n}
+        for s, v, w, n in rows
+    ])
+    text = report.bias_text(metrics, {"region_min_rows": 50})
+    assert "lowest to highest: 0.700, 0.600, 0.500." in text
+    assert "best to worst: 0.400, 0.500, 0.600." in text
+    assert "(50+ scored rows): 0.300 to 0.900." in text
+
+
 def test_interval_brackets_a_clear_improvement():
     rows = pd.DataFrame({
         "site_code": [f"S{i}" for i in range(40)], "product_code": "P", "y": 10.0,

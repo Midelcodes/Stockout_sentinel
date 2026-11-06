@@ -372,33 +372,21 @@ def results_table(metrics):
     )
 
 
-def bias_table(metrics):
-    slices = metrics[metrics["scope"] == "common"].set_index(["slice", "slice_value", "model"])
-    groups = [
-        ("volume_tier", "Volume tier", {"1": "lowest", "2": "middle", "3": "highest"}),
-        ("quality_tier", "Reporting-quality tier", {"1": "best", "2": "middle", "3": "worst"}),
-    ]
-    rows = []
-    for column, title, names in groups:
-        for value, name in names.items():
-            if (column, value, "lightgbm") not in slices.index:
-                continue
-            model = slices.loc[(column, value, "lightgbm")]
-            amc = slices.loc[(column, value, "amc_3")]
-            rows.append((
-                f"{title}: {name}", f"{model['wape']:.3f}", f"{amc['wape']:.3f}",
-                f"{model['shortfall_share']:.1%}", f"{model['p90_coverage']:.1%}",
-                f"{int(model['rows_scored']):,}",
-            ))
-    return _table(["Slice", "LightGBM WAPE", "AMC-3 WAPE", "Shortfall", "p90 coverage", "Rows"], rows)
+def bias_text(metrics, cfg):
+    """Model WAPE by volume tier, reporting-quality tier and region, as one sentence."""
+    rows = metrics[(metrics["scope"] == "common") & (metrics["model"] == "lightgbm")]
 
+    def tiers(column):
+        values = rows[rows["slice"] == column].sort_values("slice_value")["wape"]
+        return ", ".join(f"{value:.3f}" for value in values)
 
-def region_range(metrics, cfg):
-    rows = metrics[
-        (metrics["scope"] == "common") & (metrics["slice"] == "region") & (metrics["model"] == "lightgbm")
-        & (metrics["rows_scored"] >= cfg["region_min_rows"])
-    ]
-    return (rows["wape"].min(), rows["wape"].max()) if len(rows) else (float("nan"), float("nan"))
+    regions = rows[(rows["slice"] == "region") & (rows["rows_scored"] >= cfg["region_min_rows"])]["wape"]
+    region_part = f"{regions.min():.3f} to {regions.max():.3f}" if len(regions) else "n/a"
+    return (
+        f"LightGBM WAPE by site volume, lowest to highest: {tiers('volume_tier')}. "
+        f"By reporting quality, best to worst: {tiers('quality_tier')}. "
+        f"By region ({cfg['region_min_rows']}+ scored rows): {region_part}."
+    )
 
 
 def brief_status_text(briefs):
@@ -430,11 +418,9 @@ def write_app_data(cfg, panel, metrics, predictions, products):
 
 def render_readme(cfg, meta, panel, metrics, status, transfers, briefs, counts):
     reported = panel[panel["reported"]]
-    best, worst = region_range(metrics, cfg)
     sites_per_district = status.groupby("district")["site_code"].nunique()
     recipients = int((status["mos"] < cfg["mos_min"]).sum())
     served = transfers.groupby(["to_site", "product_code"]).ngroups
-    h = meta["headline"]
     url = cfg.get("app_url")
     template = TEMPLATE.read_text(encoding="utf-8")
     return template.format(
@@ -454,19 +440,11 @@ def render_readme(cfg, meta, panel, metrics, status, transfers, briefs, counts):
         llm_model=llm_models(briefs),
         brief_status=brief_status_text(briefs),
         results_table=results_table(metrics),
-        rows_note=f"All models are scored on the same {h['rows_scored']:,} rows.",
-        shortfall_note=(
-            "eLMIS AMC's WAPE sits close to the model's partly because it forecasts low: "
-            "WAPE rewards that, while the shortfall column shows its cost."
-        ),
         single_site=int((sites_per_district == 1).sum()),
         districts=len(sites_per_district),
         served=served,
         recipients=recipients,
-        bias_table=bias_table(metrics),
-        region_best=f"{best:.3f}",
-        region_worst=f"{worst:.3f}",
-        region_min_rows=cfg["region_min_rows"],
+        bias_text=bias_text(metrics, cfg),
     )
 
 
