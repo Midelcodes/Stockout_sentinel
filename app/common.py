@@ -12,6 +12,7 @@ LABELS = {
     "Stockout risk": ("SR", "#d03b3b"),
     "Ordered, never received": ("OR", "#ec835a"),
     "Understocked": ("US", "#fab219"),
+    "Unverified zero": ("UZ", "#a8a79f"),
     "Overstocked": ("OS", "#2a78d6"),
     "Adequate": ("OK", "#0ca30c"),
     "No expected demand": ("ND", "#c3c2b7"),

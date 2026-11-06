@@ -13,7 +13,7 @@ llm_max_attempts: 3
 synthetic_expiry_months: [2, 18]
 
 llm_default_model: gemini-3.5-flash-lite  # used when LLM_MODEL is unset
-llm_backup_models: [gemini-3.1-flash-lite]  # the free quota is per model; used when the main one runs out
+llm_backup_models: [gemini-3.1-flash-lite, gemini-3.5-flash]  # the free quota is per model; used when the main one runs out
 llm_temperature: 0
 llm_max_tokens: 8000
 llm_requests_per_minute: 10        # paced for the free tier
@@ -21,7 +21,10 @@ llm_rate_limit_wait_seconds: 65    # one wait after a 429 or 5xx, then stop unti
 
 balance_tolerance: 1               # stock identity may be off by this many units
 mase_min_points: 6                 # valid points a series needs for a MASE scale
-no_demand_p50: 0.5                 # p50 at or below this means no expected demand
+no_demand_p50: 0.5                 # mean forecast at or below this means no expected demand
+stock_max_age_months: 3            # a last report this old still counts as current stock
+unverified_zero_if_ordered: true   # false keeps an all-zero month with an order as a real stockout
+calibration_origins_back: [12]     # earlier fold used only to widen p90, never scored
 days_per_month: 30
 
 tweedie_variance_powers: [1.2, 1.5]

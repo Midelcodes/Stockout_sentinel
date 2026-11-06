@@ -30,10 +30,16 @@ def metric_rows():
     return pd.DataFrame(rows)
 
 
-def headline(amc_wape=0.6, model_wape=0.5, model_shortfall=0.33, amc_shortfall=0.30):
+def headline(amc_wape=0.6, model_wape=0.5, model_shortfall=0.33, amc_shortfall=0.30, matched=0.15):
     return {
-        "rows_scored": 100, "p90_coverage": 0.86, "model_wape": model_wape,
+        "rows_scored": 100, "p90_coverage": 0.9, "model_wape": model_wape,
         "model_shortfall": model_shortfall,
+        "stocking": {
+            "Stock to calibrated p90": {"shortfall_share": 0.1, "stock_vs_demand": 1.8},
+            "Stock to AMC-3": {"shortfall_share": 0.3, "stock_vs_demand": 0.96},
+            "Stock to AMC-3, same total stock as p90": {"shortfall_share": matched, "stock_vs_demand": 1.8},
+        },
+        "equal_stock_interval": [-0.05, -0.02],
         "amc_3": {
             "wape": amc_wape, "shortfall": amc_shortfall, "wape_change": model_wape / amc_wape - 1,
             "interval": [-0.2, -0.1],
@@ -45,12 +51,18 @@ def test_headline_reports_a_win_and_a_worse_shortfall():
     sentence = report.headline_sentence(headline())
     assert "LightGBM beats AMC-3" in sentence
     assert "-16.7%" in sentence
-    assert "higher than AMC-3's" in sentence
+    assert "its shortfall is higher (33.0% against 30.0%)" in sentence
+    assert "leaves 10.0% short at 1.80x demand" in sentence
+    assert "the model's shortfall is lower at equal stock (95% interval -5.0 to -2.0 points)" in sentence
 
 
 def test_headline_says_so_when_the_model_does_not_beat_amc():
     sentence = report.headline_sentence(headline(amc_wape=0.5, model_wape=0.6))
     assert "does not beat AMC-3" in sentence
+
+
+def test_headline_admits_it_when_the_baseline_wins_at_equal_stock():
+    assert "shortfall is higher at equal stock" in report.headline_sentence(headline(matched=0.05))
 
 
 def test_results_table_is_filled_from_the_metrics():
@@ -86,6 +98,17 @@ def test_interval_brackets_a_clear_improvement():
     assert high == pytest.approx(-0.8)
 
 
+def test_equal_stock_interval_is_negative_when_the_model_places_stock_better():
+    y = [10.0, 30.0] * 30
+    rows = pd.DataFrame({
+        "site_code": [f"S{i}" for i in range(60)], "product_code": "P", "y": y,
+        "lightgbm_p90": y, "amc_3": [20.0] * 60, "lightgbm": 1.0, "lightgbm_p50": 1.0,
+        "naive": 1.0, "seasonal_naive": 1.0, "elmis_amc": 1.0,
+    })
+    low, high = report.equal_stock_interval(rows, 42)
+    assert high < 0
+
+
 def test_brief_status_text():
     briefs = [{"guardrail_status": "passed"}] * 3 + [{"guardrail_status": "template_fallback"}]
     assert report.brief_status_text(briefs) == "75.0% passed, 25.0% template_fallback"
@@ -106,7 +129,7 @@ def test_pipeline_rebuilds_readme_and_app_files(long_config_path, monkeypatch):
         assert f"## {heading}\n" in text
     assert "SYNTHETIC" in text
     assert "{" not in text
-    for name in ["actuals.parquet", "app_meta.json", "briefs.json", "forecasts.parquet",
+    for name in ["actuals.parquet", "app_meta.json", "briefs.json", "forecasts.parquet", "stocking_decision.parquet",
                  "stock_status.parquet", "transfers.parquet", "backtest_metrics.parquet"]:
         assert (outputs / name).exists()
 

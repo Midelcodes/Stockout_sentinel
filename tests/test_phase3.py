@@ -5,7 +5,17 @@ import pytest
 from src import stock
 from src.clean import add_flags
 from src.features import FEATURES, origin_features, prediction_rows, training_table
-from src.model import MODELS, fit_models, post_process, predict, production_forecast
+from src.backtest import stocking_decision
+from src.model import (
+    MODELS,
+    calibration_factor,
+    fit_models,
+    fold_factors,
+    post_process,
+    predict,
+    production_forecast,
+    widen_p90,
+)
 from src.panel import build_panel
 from src.redistribute import (
     add_synthetic_expiry,
@@ -19,6 +29,7 @@ CFG = {
     "fake_zero_min_history": 1, "balance_tolerance": 1, "quantiles": [0.5, 0.9],
     "mos_min": 2, "mos_max": 4, "lead_time_months": 1, "no_demand_p50": 0.5, "days_per_month": 30,
     "volume_tiers": 3, "synthetic_expiry_months": [2, 18],
+    "stock_max_age_months": 3, "unverified_zero_if_ordered": True,
     "lightgbm": {
         "n_estimators": 10, "learning_rate": 0.1, "num_leaves": 4, "min_child_samples": 2,
         "n_jobs": 1, "deterministic": True, "force_row_wise": True,
@@ -188,6 +199,73 @@ def test_production_forecast_columns_and_horizons():
     assert (forecast[["mean", "p50", "p90"]] >= 0).all().all()
 
 
+def covered_rows(y, p90, target_index=1):
+    return pd.DataFrame({"y": y, "p90": p90, "target_index": target_index})
+
+
+def test_calibration_needs_no_widening_when_coverage_is_already_met():
+    rows = covered_rows([1.0] * 100, [5.0] * 100)
+    assert calibration_factor(rows, 0.9) == 0
+
+
+def test_widened_p90_reaches_the_target_on_the_calibration_rows():
+    y = np.arange(1, 201, dtype=float)
+    rows = covered_rows(y, [50.0] * 200)
+    wide = widen_p90(rows["p90"], calibration_factor(rows, 0.9))
+    assert (rows["y"] <= wide).mean() >= 0.9
+    assert (rows["y"] <= rows["p90"]).mean() < 0.9
+
+
+def test_widening_scales_with_the_forecast():
+    assert widen_p90(pd.Series([0.0, 99.0]), 0.5).tolist() == [0.5, 149.0]
+
+
+def test_widening_never_narrows():
+    rows = covered_rows([1.0] * 10, [100.0] * 10)
+    assert widen_p90(rows["p90"], calibration_factor(rows, 0.9)).tolist() == rows["p90"].tolist()
+
+
+def test_no_calibration_rows_means_no_widening():
+    assert calibration_factor(covered_rows([], []), 0.9) == 0
+
+
+def test_each_origin_is_calibrated_only_on_what_was_known_by_then():
+    folds = {
+        10: covered_rows(np.arange(1, 101, dtype=float), [5.0] * 100, target_index=12),
+        13: covered_rows([9999.0] * 100, [5.0] * 100, target_index=15),
+    }
+    factors = fold_factors(folds, [10, 13, 16], 0.9)
+    assert factors[10] == 0
+    early = calibration_factor(folds[10], 0.9)
+    assert factors[13] == pytest.approx(early)
+    assert factors[16] > factors[13]
+
+
+def test_a_fold_with_targets_after_the_origin_is_not_used():
+    folds = {10: covered_rows([9999.0] * 50, [5.0] * 50, target_index=14)}
+    assert fold_factors(folds, [13], 0.9)[13] == 0
+
+
+def stocking_rows():
+    return pd.DataFrame({"y": [10.0, 10.0, 10.0, 10.0], "p90": [20.0, 20.0, 5.0, 15.0], "amc_3": [8.0, 8.0, 8.0, 8.0]})
+
+
+def test_stocking_decision_measures_shortfall_and_excess():
+    table = stocking_decision(stocking_rows(), "p90").set_index("policy")
+    p90 = table.loc["Stock to calibrated p90"]
+    assert p90["shortfall_share"] == pytest.approx(5 / 40)
+    assert p90["excess_share"] == pytest.approx(25 / 40)
+    assert p90["stock_vs_demand"] == pytest.approx(60 / 40)
+    assert p90["months_short"] == 0.25
+
+
+def test_stocking_decision_matches_total_stock_for_the_fair_comparison():
+    table = stocking_decision(stocking_rows(), "p90").set_index("policy")
+    same = table.loc["Stock to AMC-3, same total stock as p90"]
+    assert same["stock_vs_demand"] == pytest.approx(table.loc["Stock to calibrated p90", "stock_vs_demand"])
+    assert same["shortfall_share"] == 0
+
+
 def test_model_table_compares_against_all_four_baselines():
     assert {"naive", "seasonal_naive", "amc_3", "elmis_amc", "lightgbm"} <= set(MODELS)
 
@@ -196,8 +274,8 @@ def test_model_table_compares_against_all_four_baselines():
 
 def status_row(**overrides):
     row = {
-        "stock_end": 30.0, "p50_h1": 10.0, "p90_lead": 15.0, "mos": 3.0,
-        "ever_active": True, "ever_ordered": True,
+        "stock_end": 30.0, "mean_h1": 10.0, "p90_lead": 15.0, "mos": 3.0,
+        "ever_active": True, "ever_ordered": True, "unverified": False,
     }
     return row | overrides
 
@@ -233,7 +311,7 @@ def test_stockout_risk_is_strictly_greater():
 
 
 def test_no_expected_demand_beats_stockout_risk():
-    assert label(p50_h1=0.5, mos=np.nan, stock_end=0.0, p90_lead=3.0) == stock.NO_EXPECTED_DEMAND
+    assert label(mean_h1=0.5, mos=np.nan, stock_end=0.0, p90_lead=3.0) == stock.NO_EXPECTED_DEMAND
 
 
 def test_never_active_labels_beat_demand_rules():
@@ -245,10 +323,90 @@ def test_no_current_data_beats_everything():
     assert label(stock_end=np.nan, ever_active=False) == stock.NO_CURRENT_DATA
 
 
-def forecast_frame(site, p50, p90):
+def forecast_frame(site, mean, p90, p50=None):
     return pd.DataFrame({
-        "site_code": site, "product_code": "P", "horizon": [1, 2, 3], "p50": p50, "p90": p90,
+        "site_code": site, "product_code": "P", "horizon": [1, 2, 3],
+        "mean": mean, "p50": mean if p50 is None else p50, "p90": p90,
     })
+
+
+def test_unverified_zero_beats_stockout_risk_and_no_demand():
+    assert label(unverified=True, stock_end=0.0, p90_lead=9.0) == stock.UNVERIFIED_ZERO
+    assert label(unverified=True, mean_h1=0.1) == stock.UNVERIFIED_ZERO
+
+
+def test_never_active_and_no_current_data_beat_unverified_zero():
+    assert label(unverified=True, ever_active=False, ever_ordered=False) == stock.NOT_STOCKED
+    assert label(unverified=True, stock_end=np.nan) == stock.NO_CURRENT_DATA
+
+
+def zero_last_month(ordered=0.0):
+    df = logistics([10, 10, 10, 10], stock_start=100)
+    df.loc[3, ["stock_initial", "stock_received", "stock_distributed", "stock_end"]] = 0
+    df.loc[3, "stock_ordered"] = ordered
+    return df
+
+
+def test_all_zero_last_report_is_unverified_with_no_mos():
+    status = stock.stock_status(clean(zero_last_month()), forecast_frame("S", 7.0, 9.0), CFG)
+    assert status["label"].iloc[0] == stock.UNVERIFIED_ZERO
+    assert np.isnan(status["mos"].iloc[0])
+
+
+def test_fake_zero_last_report_is_unverified():
+    df = logistics([10] * 7, stock_start=500)
+    df.loc[6, "stock_distributed"] = 0
+    df.loc[6, "stock_end"] = df.loc[6, "stock_initial"] + df.loc[6, "stock_received"]
+    status = stock.stock_status(clean(df), forecast_frame("S", 7.0, 9.0), CFG)
+    assert status["label"].iloc[0] == stock.UNVERIFIED_ZERO
+
+
+def test_an_order_is_unverified_by_default_and_a_stockout_with_the_switch():
+    panel = clean(zero_last_month(ordered=40.0))
+    forecasts = forecast_frame("S", 7.0, 9.0)
+    assert stock.stock_status(panel, forecasts, CFG)["label"].iloc[0] == stock.UNVERIFIED_ZERO
+    keep = CFG | {"unverified_zero_if_ordered": False}
+    assert stock.stock_status(panel, forecasts, keep)["label"].iloc[0] == stock.STOCKOUT_RISK
+
+
+def test_running_out_with_a_real_report_stays_stockout_risk():
+    df = logistics([10, 10, 10], stock_start=25)
+    df.loc[2, ["stock_distributed", "stock_end"]] = [df.loc[2, "stock_initial"] + df.loc[2, "stock_received"], 0]
+    status = stock.stock_status(clean(df), forecast_frame("S", 7.0, 9.0), CFG)
+    assert status["label"].iloc[0] == stock.STOCKOUT_RISK
+
+
+def test_months_of_stock_uses_the_mean_not_the_median():
+    panel = clean(logistics([10, 10, 10], stock_start=100))
+    status = stock.stock_status(panel, forecast_frame("S", 8.0, 12.0, p50=2.0), CFG)
+    assert status["mos"].iloc[0] == pytest.approx(panel["stock_end"].iloc[-1] / 8)
+
+
+def age_panel(months_silent):
+    df = pd.concat([
+        logistics([10] * 10, site="A"),
+        logistics([10] * (10 - months_silent), site="B"),
+    ])
+    return clean(df)
+
+
+def age_status(months_silent):
+    forecasts = pd.concat([forecast_frame("A", 5.0, 6.0), forecast_frame("B", 5.0, 6.0)])
+    return stock.stock_status(age_panel(months_silent), forecasts, CFG).set_index("site_code")
+
+
+def test_a_report_within_the_limit_counts_and_shows_its_age():
+    status = age_status(3)
+    assert status.loc["A", "data_age_months"] == 0
+    assert status.loc["B", "data_age_months"] == 3
+    assert status.loc["B", "label"] != stock.NO_CURRENT_DATA
+    assert status.loc["B", "stock_end"] > 0
+
+
+def test_a_report_past_the_limit_is_no_current_data():
+    status = age_status(4)
+    assert status.loc["B", "label"] == stock.NO_CURRENT_DATA
+    assert np.isnan(status.loc["B", "stock_end"])
 
 
 def test_status_computes_mos_and_days():
@@ -302,13 +460,6 @@ def test_status_lead_time_sums_p90_over_the_lead_time():
     assert status["label"].iloc[0] == stock.STOCKOUT_RISK
 
 
-def test_status_with_no_report_at_the_last_month():
-    df = pd.concat([logistics([10, 10, 10], site="A"), logistics([10, 10], site="B")])
-    forecasts = pd.concat([forecast_frame("A", 5.0, 6.0), forecast_frame("B", 5.0, 6.0)])
-    status = stock.stock_status(clean(df), forecasts, CFG).set_index("site_code")
-    assert status.loc["B", "label"] == stock.NO_CURRENT_DATA
-
-
 def test_low_data_quality_marks_the_worst_tier_beside_the_label():
     frames = [logistics([10, 10, 10], site=s) for s in ("A", "B", "C")]
     bad = logistics([10, 10, 0], site="C", stock_start=20)
@@ -324,9 +475,9 @@ def test_low_data_quality_marks_the_worst_tier_beside_the_label():
 
 def status_table(rows):
     """SYNTHETIC rows: (site, district, product, stock_end, p50)."""
-    s = pd.DataFrame(rows, columns=["site_code", "district", "product_code", "stock_end", "p50_h1"])
-    s["mos"] = s["stock_end"] / s["p50_h1"]
-    s["days_to_stockout"] = s["stock_end"] / (s["p50_h1"] / 30)
+    s = pd.DataFrame(rows, columns=["site_code", "district", "product_code", "stock_end", "mean_h1"])
+    s["mos"] = s["stock_end"] / s["mean_h1"]
+    s["days_to_stockout"] = s["stock_end"] / (s["mean_h1"] / 30)
     s["as_of"] = pd.Timestamp("2019-06-01")
     s["label"] = stock.ADEQUATE
     return s
@@ -348,9 +499,9 @@ def test_transfer_conservation_and_donor_floor():
 
     keyed = status.set_index(["site_code", "product_code"])
     after_donors = keyed.loc[sent.index, "stock_end"] - sent
-    assert (after_donors >= CFG["mos_max"] * keyed.loc[sent.index, "p50_h1"]).all()
+    assert (after_donors >= CFG["mos_max"] * keyed.loc[sent.index, "mean_h1"]).all()
     after_recipients = keyed.loc[received.index, "stock_end"] + received
-    assert (after_recipients <= CFG["mos_min"] * keyed.loc[received.index, "p50_h1"]).all()
+    assert (after_recipients <= CFG["mos_min"] * keyed.loc[received.index, "mean_h1"]).all()
 
 
 def test_transfers_stay_within_district_and_product():

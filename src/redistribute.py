@@ -15,9 +15,9 @@ COLUMNS = [
 
 def recipients_and_donors(status, cfg):
     recipients = status[status["mos"] < cfg["mos_min"]].copy()
-    recipients["need"] = cfg["mos_min"] * recipients["p50_h1"] - recipients["stock_end"]
+    recipients["need"] = cfg["mos_min"] * recipients["mean_h1"] - recipients["stock_end"]
     donors = status[(status["mos"] > cfg["mos_max"]) & (status["label"] != STOCKOUT_RISK)].copy()
-    donors["available"] = donors["stock_end"] - cfg["mos_max"] * donors["p50_h1"]
+    donors["available"] = donors["stock_end"] - cfg["mos_max"] * donors["mean_h1"]
     return recipients, donors
 
 

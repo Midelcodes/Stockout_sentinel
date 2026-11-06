@@ -324,7 +324,24 @@ def wape_change_interval(predictions, baseline, seed):
     return [float(q) for q in np.nanquantile(change, [0.025, 0.975])]
 
 
-def headline_numbers(metrics, predictions, cfg):
+def equal_stock_interval(predictions, seed):
+    """95% interval for p90's shortfall minus AMC-3's at the same total stock, in points."""
+    rows = predictions[predictions[MODELS].notna().all(axis=1)]
+    codes, _ = pd.factorize(rows["site_code"] + "|" + rows["product_code"])
+    y, p90, amc = (rows[c].to_numpy() for c in ("y", "lightgbm_p90", "amc_3"))
+    rng = np.random.default_rng(seed)
+    gaps = []
+    for _ in range(BOOTSTRAP_DRAWS):
+        weights = np.bincount(rng.integers(0, codes.max() + 1, codes.max() + 1), minlength=codes.max() + 1)[codes]
+        demand = (weights * y).sum()
+        scale = (weights * p90).sum() / (weights * amc).sum()
+        model = (weights * np.clip(y - p90, 0, None)).sum() / demand
+        baseline = (weights * np.clip(y - amc * scale, 0, None)).sum() / demand
+        gaps.append(model - baseline)
+    return [float(q) for q in np.nanquantile(gaps, [0.025, 0.975])]
+
+
+def headline_numbers(metrics, predictions, stocking, cfg):
     overall = overall_metrics(metrics)
     model = overall.loc["lightgbm"]
     result = {
@@ -332,6 +349,11 @@ def headline_numbers(metrics, predictions, cfg):
         "p90_coverage": float(model["p90_coverage"]),
         "model_wape": float(model["wape"]),
         "model_shortfall": float(model["shortfall_share"]),
+        "p90_coverage_raw": float(
+            (predictions["y"] <= predictions["lightgbm_p90_raw"])[predictions[MODELS].notna().all(axis=1)].mean()
+        ),
+        "stocking": stocking.set_index("policy").to_dict("index"),
+        "equal_stock_interval": equal_stock_interval(predictions, cfg["seed"]),
     }
     for baseline in ["amc_3", "elmis_amc"]:
         row = overall.loc[baseline]
@@ -349,11 +371,21 @@ def headline_sentence(h):
     verdict = "beats" if amc["wape_change"] < 0 else "does not beat"
     shortfall = "lower" if h["model_shortfall"] < amc["shortfall"] else "higher"
     low, high = amc["interval"]
+    stocking = h["stocking"]
+    p90 = stocking["Stock to calibrated p90"]
+    plain = stocking["Stock to AMC-3"]
+    matched = stocking["Stock to AMC-3, same total stock as p90"]
+    fair = "lower" if p90["shortfall_share"] < matched["shortfall_share"] else "higher"
+    gap_low, gap_high = (100 * value for value in h["equal_stock_interval"])
     return (
         f"LightGBM {verdict} AMC-3 on forecast error: WAPE {amc['wape']:.3f} to {h['model_wape']:.3f} "
-        f"({amc['wape_change']:+.1%}, 95% interval {low:+.1%} to {high:+.1%}). Its shortfall share is "
-        f"{shortfall} than AMC-3's ({h['model_shortfall']:.1%} against {amc['shortfall']:.1%}), "
-        f"and p90 coverage is {h['p90_coverage']:.1%}."
+        f"({amc['wape_change']:+.1%}, 95% interval {low:+.1%} to {high:+.1%}). As a point forecast its shortfall "
+        f"is {shortfall} ({h['model_shortfall']:.1%} against {amc['shortfall']:.1%}). Stocking to the calibrated "
+        f"p90 ({h['p90_coverage']:.1%} coverage) leaves {p90['shortfall_share']:.1%} short at "
+        f"{p90['stock_vs_demand']:.2f}x demand, against {plain['shortfall_share']:.1%} for AMC-3 at "
+        f"{plain['stock_vs_demand']:.2f}x. Given the same total stock, AMC-3 leaves "
+        f"{matched['shortfall_share']:.1%}, so the model's shortfall is {fair} at equal stock "
+        f"(95% interval {gap_low:+.1f} to {gap_high:+.1f} points)."
     )
 
 
@@ -399,7 +431,7 @@ def llm_models(briefs):
     return ", ".join(f"`{m}`" for m in models) or "a template (no LLM run yet)"
 
 
-def write_app_data(cfg, panel, metrics, predictions, products):
+def write_app_data(cfg, panel, metrics, predictions, stocking, products):
     """The only files the app needs beyond the stage outputs. No raw columns."""
     outputs = cfg["paths"]["outputs"]
     actuals = panel.loc[panel["y"].notna(), SERIES_KEYS + ["month_start", "y"]]
@@ -408,7 +440,7 @@ def write_app_data(cfg, panel, metrics, predictions, products):
     meta = {
         "as_of_label": last.strftime("%B %Y"),
         "products": dict(zip(products["product_code"], products["product_name"].str.strip())),
-        "headline": headline_numbers(metrics, predictions, cfg),
+        "headline": headline_numbers(metrics, predictions, stocking, cfg),
     }
     meta["headline_sentence"] = headline_sentence(meta["headline"])
     with open(outputs / "app_meta.json", "w", encoding="utf-8") as f:
@@ -453,6 +485,7 @@ def run(cfg):
     panel = pd.read_parquet(outputs / "panel_clean.parquet")
     metrics = pd.read_parquet(outputs / "backtest_metrics.parquet")
     predictions = pd.read_parquet(outputs / "backtest_predictions.parquet")
+    stocking = pd.read_parquet(outputs / "stocking_decision.parquet")
     status = pd.read_parquet(outputs / "stock_status.parquet")
     transfers = pd.read_parquet(outputs / "transfers.parquet")
     with open(outputs / "briefs.json", encoding="utf-8") as f:
@@ -460,7 +493,7 @@ def run(cfg):
     with open(outputs / "flag_counts.json", encoding="utf-8") as f:
         counts = json.load(f)
 
-    meta = write_app_data(cfg, panel, metrics, predictions, load_raw(cfg)["products"])
+    meta = write_app_data(cfg, panel, metrics, predictions, stocking, load_raw(cfg)["products"])
     text = render_readme(cfg, meta, panel, metrics, status, transfers, briefs, counts)
     cfg["readme_path"].write_text(text, encoding="utf-8")
     return "done"

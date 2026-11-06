@@ -141,6 +141,7 @@ TEMPLATE_TEXT = {
         "receive": "- Review a suggested transfer: receive {quantity} of {name} from {site} (simulated expiry {expiry}).",
         "send": "- Review a suggested transfer: send {quantity} of {name} to {site} (simulated expiry {expiry}).",
         "resupply": "- Check resupply for {name}.",
+        "verify": "- Confirm whether the zero report for {name} is a real stockout.",
         "monitor": "- Continue routine stock monitoring.",
     },
     "fr": {
@@ -156,6 +157,7 @@ TEMPLATE_TEXT = {
         "receive": "- Examiner un transfert suggéré : recevoir {quantity} de {name} depuis {site} (péremption simulée {expiry}).",
         "send": "- Examiner un transfert suggéré : envoyer {quantity} de {name} vers {site} (péremption simulée {expiry}).",
         "resupply": "- Vérifier le réapprovisionnement de {name}.",
+        "verify": "- Confirmer si le zéro déclaré pour {name} est une vraie rupture.",
         "monitor": "- Poursuivre le suivi de routine des stocks.",
     },
 }
@@ -163,6 +165,7 @@ FRENCH_LABELS = {
     "No current data": "Pas de données récentes",
     "Not stocked": "Non stocké",
     "Ordered, never received": "Commandé, jamais reçu",
+    "Unverified zero": "Zéro non vérifié",
     "No expected demand": "Pas de demande attendue",
     "Stockout risk": "Risque de rupture",
     "Understocked": "Sous-stocké",
@@ -246,5 +249,7 @@ def template_brief(facts, lang):
     ]
     at_risk = [p for p in urgent if p["label"] == "Stockout risk"]
     bullets += [text["resupply"].format(name=p["product_name"]) for p in at_risk[: 3 - len(bullets)]]
+    unverified = [p for p in facts["products"] if p["label"] == "Unverified zero"]
+    bullets += [text["verify"].format(name=p["product_name"]) for p in unverified[: 3 - len(bullets)]]
     prose = " ".join(template_sentences(facts, lang))
     return prose + "\n\n" + "\n".join(bullets or [text["monitor"]])
