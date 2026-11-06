@@ -404,6 +404,16 @@ def test_template_counts_agree_with_their_nouns():
     assert "1250 unités en stock" in template_brief(facts(), "fr")
 
 
+def test_template_asks_to_confirm_an_unverified_zero():
+    f = facts(
+        label_counts={"Unverified zero": 1},
+        products=[product(label="Unverified zero", stock_end=0, months_of_stock=None, days_to_stockout=None)],
+    )
+    assert "Confirm whether the zero report" in template_brief(f, "en")
+    assert "Zéro non vérifié 1" in template_brief(f, "fr")
+    assert find_shape_problems(template_brief(f, "fr"), f, "fr") == []
+
+
 def test_template_is_deterministic():
     assert template_brief(facts(), "fr") == template_brief(facts(), "fr")
 
@@ -433,6 +443,7 @@ def status_rows():
         "site_code": ["S1", "S1", "S2"], "product_code": ["P1", "P2", "P1"], "district": "D",
         "as_of": pd.Timestamp("2019-06-01"), "stock_end": [100.0, 0.0, float("nan")],
         "mos": [4.44, float("nan"), float("nan")], "days_to_stockout": [133.2, float("nan"), float("nan")],
+        "data_age_months": [0.0, 2.0, float("nan")],
         "label": ["Overstocked", "Not stocked", "No current data"],
         "low_data_quality": [True, True, False],
         "secret_raw_column": [1, 2, 3],
@@ -444,7 +455,7 @@ def forecast_rows():
     for site, code in [("S1", "P1"), ("S1", "P2"), ("S2", "P1")]:
         for horizon in (1, 2, 3):
             rows.append({"site_code": site, "product_code": code, "horizon": horizon,
-                         "p50": 22.4 + horizon, "p90": 30.6 + horizon})
+                         "mean": 25.2 + horizon, "p50": 22.4 + horizon, "p90": 30.6 + horizon})
     return pd.DataFrame(rows)
 
 
@@ -468,6 +479,15 @@ def test_facts_round_units_and_mos():
     assert p["months_of_stock"] == 4.4
     assert p["days_to_stockout"] == 133
     assert p["low_data_quality"] is True
+
+
+def test_facts_carry_the_mean_forecast_and_data_age():
+    f = built()
+    assert f["S1"]["products"][0]["mean"] == [26, 27, 28]
+    assert f["S1"]["products"][0]["data_age_months"] == 0
+    assert f["S1"]["products"][1]["data_age_months"] == 2
+    assert f["S1"]["products"][1]["mean"] == [None, None, None]
+    assert f["S2"]["products"][0]["data_age_months"] is None
 
 
 def test_facts_header():
@@ -542,7 +562,8 @@ class FakeClient:
 def test_prompt_states_the_required_rules():
     prompt = llm_brief.SYSTEM_PROMPT
     for phrase in ["3 to 5 sentences", "up to 3 suggested actions", "no arithmetic",
-                   "p50 to p90", "human review", "simulated", "low_data_quality"]:
+                   "p50 to p90", "human review", "simulated", "low_data_quality",
+                   "data_age_months", "Unverified zero"]:
         assert phrase in prompt
 
 

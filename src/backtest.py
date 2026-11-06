@@ -109,6 +109,33 @@ def score(rows, model, upper=None):
     }
 
 
+def stocking_decision(rows, stock_column, baseline="amc_3"):
+    """Compare stocking to a forecast, including the baseline at the same total stock.
+
+    Holding more stock always cuts shortfall, so the fair test gives the baseline
+    the same total stock as the model. That scale is set on the scored rows, which
+    favors the baseline.
+    """
+    demand = rows["y"].sum()
+    scale = rows[stock_column].sum() / rows[baseline].sum()
+    policies = {
+        "Stock to calibrated p90": rows[stock_column],
+        "Stock to AMC-3": rows[baseline],
+        "Stock to AMC-3, same total stock as p90": rows[baseline] * scale,
+    }
+    records = []
+    for policy, stock in policies.items():
+        records.append({
+            "policy": policy,
+            "shortfall_share": (rows["y"] - stock).clip(lower=0).sum() / demand,
+            "excess_share": (stock - rows["y"]).clip(lower=0).sum() / demand,
+            "stock_vs_demand": stock.sum() / demand,
+            "months_short": (stock < rows["y"]).mean(),
+            "rows_scored": len(rows),
+        })
+    return pd.DataFrame(records)
+
+
 def metrics_table(predictions, models, upper=None):
     """Every model on every slice, twice.
 

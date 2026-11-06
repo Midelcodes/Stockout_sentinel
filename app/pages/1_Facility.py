@@ -50,8 +50,8 @@ if brief:
     st.badge(text, color=color)
     st.markdown(brief["text"])
     st.caption(
-        "The guardrail checks that every number comes from the site's facts and that the format "
-        "is right. It does not check that each number sits beside the right product."
+        "The guardrail checks that every number comes from the site's facts, that the format is right, "
+        "and that next-month ranges match their product. It does not check every other number's placement."
     )
 else:
     st.info("No brief is available for this site.")
@@ -62,17 +62,21 @@ table = rows.assign(
         "Product": rows["product"],
         "Label": rows["label"],
         "Stock": rows["stock_end"],
+        "Age": rows["data_age_months"],
         "p50": rows["p50_h1"].round(),
         "p90": rows["p90_h1"].round(),
         "MOS": rows["mos"].round(1),
         "Days": rows["days_to_stockout"].round(),
         "Low quality": rows["low_data_quality"],
     }
-)[["Product", "Label", "Stock", "p50", "p90", "MOS", "Days", "Low quality"]]
+)[["Product", "Label", "Age", "Stock", "p50", "p90", "MOS", "Days", "Low quality"]]
 no_forecast = rows["label"].isin(["Not stocked", "Ordered, never received"]).values
 table.loc[no_forecast, ["p50", "p90"]] = None
 st.dataframe(table, hide_index=True, width="stretch")
-st.caption("p50 and p90 are next month's forecast range. MOS is months of stock. Days is days to stockout.")
+st.caption(
+    "Age is how many months old the stock figure is. p50 and p90 are next month's forecast range. "
+    "MOS (months of stock) and Days (to stockout) use the mean forecast."
+)
 
 st.subheader("Demand and forecast")
 st.caption("Gaps are months with no valid value: unreported, flagged, or a stockout month.")

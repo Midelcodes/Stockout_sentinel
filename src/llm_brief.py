@@ -16,7 +16,7 @@ from src.guardrail import allowed_numbers, find_problems, guarded_brief, local_m
 from src.io import ROOT, SERIES_KEYS, load_raw
 from src.stock import NOT_STOCKED, ORDERED_NEVER_RECEIVED
 
-PROMPT_VERSION = "4"
+PROMPT_VERSION = "5"
 LANGUAGES = {"en": "English", "fr": "French"}
 SYSTEM_PROMPT = """You write short stock briefs for a district pharmacist in Côte d'Ivoire. \
 FACTS is your only source; it describes one health facility at a historical date.
@@ -40,6 +40,8 @@ Rules for numbers:
 Always:
 - If there are transfers, say in a sentence of the paragraph that they are suggestions for human review and that their expiry dates are simulated.
 - If low_data_quality is true for any product, say in the paragraph that the site's data quality is low.
+- If a product you name has data_age_months above 0, say how many months old its stock figure is.
+- An "Unverified zero" product reported zero, but that may not be a real stockout. Say it needs checking; do not call it a stockout.
 
 Reply with the brief only, with no heading or preamble."""
 FRENCH_GUIDE = """French wording to use:
@@ -70,9 +72,11 @@ def _product_facts(row, forecast, name):
     ordered = forecast.sort_values("horizon")
     return {
         "product_name": name,
+        "mean": [None if no_forecast else _whole(v) for v in ordered["mean"]],
         "p50": [None if no_forecast else _whole(v) for v in ordered["p50"]],
         "p90": [None if no_forecast else _whole(v) for v in ordered["p90"]],
         "stock_end": _whole(row.stock_end),
+        "data_age_months": _whole(row.data_age_months),
         "months_of_stock": None if pd.isna(row.mos) else round(float(row.mos), 1),
         "days_to_stockout": _whole(row.days_to_stockout),
         "label": row.label,

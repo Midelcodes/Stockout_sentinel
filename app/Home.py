@@ -15,8 +15,8 @@ view = status[status["district"].isin(chosen)] if chosen else status
 st.subheader("Series by label")
 counts = view["label"].value_counts()
 labels = list(LABELS)
-for row in (labels[:4], labels[4:]):
-    for column, label in zip(st.columns(4), row):
+for row in (labels[:5], labels[5:]):
+    for column, label in zip(st.columns(5), row):
         column.metric(f"{LABELS[label][0]} · {label}", f"{int(counts.get(label, 0)):,}")
 
 st.subheader("District by product")

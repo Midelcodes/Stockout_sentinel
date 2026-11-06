@@ -15,9 +15,37 @@
  },
  "headline": {
   "rows_scored": 5649,
-  "p90_coverage": 0.8585590369976988,
+  "p90_coverage": 0.895025668259869,
   "model_wape": 0.5451655142770322,
   "model_shortfall": 0.33198728256986104,
+  "p90_coverage_raw": 0.8585590369976988,
+  "stocking": {
+   "Stock to calibrated p90": {
+    "shortfall_share": 0.08993120442244415,
+    "excess_share": 0.957172295226523,
+    "stock_vs_demand": 1.8672410908040789,
+    "months_short": 0.104974331740131,
+    "rows_scored": 5649
+   },
+   "Stock to AMC-3": {
+    "shortfall_share": 0.3177385235188704,
+    "excess_share": 0.27508522306210165,
+    "stock_vs_demand": 0.9573466995432314,
+    "months_short": 0.4138785625774473,
+    "rows_scored": 5649
+   },
+   "Stock to AMC-3, same total stock as p90": {
+    "shortfall_share": 0.12957609013646426,
+    "excess_share": 0.9968171809405432,
+    "stock_vs_demand": 1.8672410908040789,
+    "months_short": 0.1816250663834307,
+    "rows_scored": 5649
+   }
+  },
+  "equal_stock_interval": [
+   -0.05291223288473962,
+   -0.027303016917803513
+  ],
   "amc_3": {
    "wape": 0.5928237465809721,
    "shortfall": 0.3177385235188704,
@@ -37,5 +65,5 @@
    ]
   }
  },
- "headline_sentence": "LightGBM beats AMC-3 on forecast error: WAPE 0.593 to 0.545 (-8.0%, 95% interval -15.2% to -2.6%). Its shortfall share is higher than AMC-3's (33.2% against 31.8%), and p90 coverage is 85.9%."
+ "headline_sentence": "LightGBM beats AMC-3 on forecast error: WAPE 0.593 to 0.545 (-8.0%, 95% interval -15.2% to -2.6%). As a point forecast its shortfall is higher (33.2% against 31.8%). Stocking to the calibrated p90 (89.5% coverage) leaves 9.0% short at 1.87x demand, against 31.8% for AMC-3 at 0.96x. Given the same total stock, AMC-3 leaves 13.0%, so the model's shortfall is lower at equal stock (95% interval -5.3 to -2.7 points)."
 }

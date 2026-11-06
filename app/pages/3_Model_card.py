@@ -58,6 +58,20 @@ st.caption(
     "it beside shortfall: the volume a facility would have been short."
 )
 
+st.subheader("Stocking decision")
+stocking = load_parquet("stocking_decision")
+st.dataframe(pd.DataFrame({
+    "Stock to": stocking["policy"].str.removeprefix("Stock to "),
+    "Shortfall": stocking["shortfall_share"].map("{:.1%}".format),
+    "Excess stock": stocking["excess_share"].map("{:.1%}".format),
+    "Stock vs demand": stocking["stock_vs_demand"].map("{:.2f}x".format),
+    "Months short": stocking["months_short"].map("{:.1%}".format),
+}), hide_index=True, width="stretch")
+st.caption(
+    "Holding more stock always cuts shortfall, so the fair test is the last row: AMC-3 given the same "
+    "total stock as the p90 policy. Its scale is set on the scored rows, which favors AMC-3."
+)
+
 st.subheader("Error by slice")
 slice_name = st.selectbox("Slice", list(SLICES), format_func=SLICES.get)
 names = product_names()
@@ -83,8 +97,9 @@ st.markdown("""
 - Expiry data is SYNTHETIC.
 - There are no supplier lead times or order cycles.
 - The data covers 2016 to 2019, one country and one commodity class: contraceptives, not all essential medicines.
-- Months of stock uses p50, a median that runs below mean demand, so "Overstocked" may be overstated.
-- p90 coverage is below its target, so some stockout risks will be missed.
+- p90 is widened using errors from earlier backtest folds only. Coverage varies by product, so some risks will still be missed.
+- An all-zero last report is labelled "Unverified zero", but many such months have orders placed and may be real stockouts.
+- Stock figures up to 3 months old are used with their age shown, and are not adjusted for use since.
 - `site_type` does not support a rural or urban comparison, so none is made.
 - Briefs are LLM-written. The guardrail stops invented numbers, not a real number beside the wrong product.
 - Every transfer needs human review.
