@@ -1,0 +1,15 @@
+{
+  "panel_rows": 44168,
+  "reported": 35753,
+  "unreported": 8415,
+  "flag_fake_zero": 1228,
+  "flag_fake_zero_short_history": 172,
+  "flag_all_zero": 9820,
+  "flag_all_zero_with_recorded_amc": 1611,
+  "flag_all_zero_with_order": 4561,
+  "flag_censored": 2003,
+  "flag_balance": 0,
+  "valid_y": 22702,
+  "valid_y_zero": 6690,
+  "valid_y_positive": 16012
+}
