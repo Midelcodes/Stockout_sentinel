@@ -1,0 +1,18 @@
+# Raw data is never committed
+data/raw/
+data/interim/*
+!data/interim/.gitkeep
+
+# Near row-level copy of the raw data; the pipeline rebuilds it
+outputs/panel_clean.parquet
+
+# Secrets
+.env
+
+# Environments and caches
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ipynb_checkpoints/
+.streamlit/secrets.toml

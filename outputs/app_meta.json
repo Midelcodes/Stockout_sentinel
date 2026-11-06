@@ -1,0 +1,41 @@
+{
+ "as_of_label": "June 2019",
+ "products": {
+  "AS17005": "PRESERVATIF FEMININ UNITE",
+  "AS46000": "PRESERVATIF MASCULIN BTE/144 BOITE",
+  "AS27139": "LEVONORGESTREL 1.5 MG CP BOITE",
+  "AS27137": "JADELLE (IMPLANT + TROCARD) 150 µG BTE/10 BOITE",
+  "AS27138": "IMPLANON IMPLANT 68 MG BTE/1 BOITE",
+  "AS21126": "MEDROXYPROGESTERONE 104MG/0.65ML INJ UNITE (SAYANA PRESS) UNITE",
+  "AS27133": "DEPO PROVERA/PETOGEN 150 MG / 3ML INJ BTE/25 BOITE",
+  "AS27134": "NORISTERAT 200 MG AMP INJ BTE/100 BOITE",
+  "AS42018": "COPPER TCU 380 A (CUIVRE) UNITE",
+  "AS27000": "MICROGYNON 0.03/0.15 MG BTE / 3 CYCLES BOITE",
+  "AS27132": "MICROLUT 0.03 MG BTE / 3 CYCLES BOITE"
+ },
+ "headline": {
+  "rows_scored": 5649,
+  "p90_coverage": 0.8585590369976988,
+  "model_wape": 0.5451655142770322,
+  "model_shortfall": 0.33198728256986104,
+  "amc_3": {
+   "wape": 0.5928237465809721,
+   "shortfall": 0.3177385235188704,
+   "wape_change": -0.0803919083518535,
+   "interval": [
+    -0.15195699939282517,
+    -0.025974115381924394
+   ]
+  },
+  "elmis_amc": {
+   "wape": 0.5752213104814261,
+   "shortfall": 0.3620518210113586,
+   "wape_change": -0.05225083921045792,
+   "interval": [
+    -0.07977036065629517,
+    -0.024853758428082542
+   ]
+  }
+ },
+ "headline_sentence": "LightGBM beats AMC-3 on forecast error: WAPE 0.593 to 0.545 (-8.0%, 95% interval -15.2% to -2.6%). Its shortfall share is higher than AMC-3's (33.2% against 31.8%), and p90 coverage is 85.9%."
+}

@@ -1,0 +1,59 @@
+seed: 42
+horizons: [1, 2, 3]
+backtest_origins_back: [9, 6, 3]   # months before the last month
+fake_zero_min_median: 5            # prior 6-month median distributed
+fake_zero_window: 6                # prior reported months in that median
+fake_zero_min_history: 1           # fewest prior reported months the rule accepts
+mos_min: 2
+mos_max: 4
+lead_time_months: 1
+quantiles: [0.5, 0.9]
+volume_tiers: 3
+llm_max_attempts: 3
+synthetic_expiry_months: [2, 18]
+
+llm_default_model: gemini-3.5-flash-lite  # used when LLM_MODEL is unset
+llm_backup_models: [gemini-3.1-flash-lite]  # the free quota is per model; used when the main one runs out
+llm_temperature: 0
+llm_max_tokens: 8000
+llm_requests_per_minute: 10        # paced for the free tier
+llm_rate_limit_wait_seconds: 65    # one wait after a 429 or 5xx, then stop until the next run
+
+balance_tolerance: 1               # stock identity may be off by this many units
+mase_min_points: 6                 # valid points a series needs for a MASE scale
+no_demand_p50: 0.5                 # p50 at or below this means no expected demand
+days_per_month: 30
+
+tweedie_variance_powers: [1.2, 1.5]
+lightgbm:                          # fixed before any backtest result was seen
+  n_estimators: 300
+  learning_rate: 0.05
+  num_leaves: 31
+  min_child_samples: 20
+  subsample: 0.8
+  subsample_freq: 1
+  colsample_bytree: 0.8
+  n_jobs: 4
+  deterministic: true
+  force_row_wise: true
+
+raw_files:                         # the Zindi extract names the logistics file Train.csv
+  logistics: Train.csv
+  sites: service_delivery_site_data.csv
+  products: product.csv
+  dictionary: data_dictionary.csv
+
+readme_path: README.md
+app_url:                           # filled in after deployment
+region_min_rows: 50                # smallest region shown in the README's WAPE range
+
+paths:                             # relative to the repo root
+  raw: data/raw
+  interim: data/interim
+  outputs: outputs
+
+expected:                          # from the build spec; compared in outputs/profile.md
+  sites: 156
+  products: 11
+  first_month: "2016-01"
+  last_month: "2019-09"
