@@ -4,6 +4,7 @@ import sys
 
 from src import (
     backtest,
+    budget,
     clean,
     llm_brief,
     model,
@@ -22,6 +23,7 @@ STAGES = {
     "model": model.run,
     "stock": stock.run,
     "redistribute": redistribute.run,
+    "budget": budget.run,
     "llm_brief": llm_brief.run,
     "report": report.run,
 }
