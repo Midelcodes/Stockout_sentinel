@@ -448,6 +448,27 @@ def write_app_data(cfg, panel, metrics, predictions, stocking, products):
     return meta
 
 
+def budget_text(outputs):
+    """One sentence on the budget comparison at half the cost of funding every order."""
+    path = outputs / "budget_curve.parquet"
+    if not path.exists():
+        return "Run the budget stage to compare policies."
+    curve = pd.read_parquet(path)
+    half = curve[curve["budget_share"] == 0.5].set_index("policy")
+    if half.empty:
+        return ""
+    total = int(curve.loc[curve["budget_share"] == 1.0, "risks_resolved"].max())
+    best, urgent, largest = (int(half.loc[p, "risks_resolved"]) for p in
+                             ["Optimised (MILP)", "Most urgent first", "Largest demand first"])
+    demand = half["monthly_demand_covered"]
+    return (
+        f"With half the budget needed to fund all {total} orders, the optimiser resolves {best} risks, "
+        f"against {urgent} for most urgent first and {largest} for largest demand first, while covering "
+        f"{demand['Optimised (MILP)']:,.0f} units of monthly demand (against {demand['Most urgent first']:,.0f} "
+        f"and {demand['Largest demand first']:,.0f})."
+    )
+
+
 def render_readme(cfg, meta, panel, metrics, status, transfers, briefs, counts):
     reported = panel[panel["reported"]]
     sites_per_district = status.groupby("district")["site_code"].nunique()
@@ -477,6 +498,7 @@ def render_readme(cfg, meta, panel, metrics, status, transfers, briefs, counts):
         served=served,
         recipients=recipients,
         bias_text=bias_text(metrics, cfg),
+        budget_line=budget_text(cfg["paths"]["outputs"]),
     )
 
 

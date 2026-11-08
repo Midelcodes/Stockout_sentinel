@@ -1,51 +1,22 @@
 """Number guardrail for LLM briefs, and the deterministic template it falls back to."""
-import json
 import re
-from decimal import Decimal
 
-SPACES = "    "
-NUMBER_PATTERNS = {
-    "en": re.compile(rf"(?<!\d)\d{{1,3}}(?:[,{SPACES}]\d{{3}})+(?:\.\d+)?(?!\d)|\d+(?:\.\d+)?"),
-    "fr": re.compile(rf"(?<!\d)\d{{1,3}}(?:[.{SPACES}]\d{{3}})+(?:,\d+)?(?!\d)|\d+(?:[.,]\d+)?"),
-}
-DOT_THOUSANDS = re.compile(r"\d{1,3}(?:\.\d{3})+")
+# The generic number checks live in a standalone package so other projects can reuse them.
+from llm_number_guardrail import (  # noqa: F401  (re-exported for existing callers)
+    SPACES,
+    allowed_numbers,
+    extract_numbers,
+    find_offending,
+    guarded_generate,
+    parse_number,
+)
+
 FIELD_NAMES = re.compile(
     r"\b(stock_end|months_of_stock|days_to_stockout|low_data_quality|label_counts|product_name|other_site)\b"
 )
 RANGE = re.compile(r"(\d+)\s*(?:to|à|–)\s*(\d+)")
 NULL_VALUE = re.compile(r"\bnull\b", re.I)
 ENGLISH_IN_FRENCH = re.compile(r"\b(p50 to p90|human review|expiry|stockout|units|June)\b", re.I)
-
-
-def parse_number(token, lang):
-    """Read one number token. English decimals use '.', French decimals use ','."""
-    token = re.sub(f"[{SPACES}]", "", token)
-    if lang == "en":
-        return Decimal(token.replace(",", ""))
-    if "," in token:
-        return Decimal(token.replace(".", "").replace(",", "."))
-    if DOT_THOUSANDS.fullmatch(token):
-        return Decimal(token.replace(".", ""))
-    return Decimal(token)
-
-
-def extract_numbers(text, lang):
-    return [(m.group(), parse_number(m.group(), lang)) for m in NUMBER_PATTERNS[lang].finditer(text)]
-
-
-def allowed_numbers(facts):
-    """Every number anywhere in the serialized FACTS, including inside names and dates."""
-    serialized = json.dumps(facts, ensure_ascii=False)
-    return {Decimal(token) for token in re.findall(r"\d+(?:\.\d+)?", serialized)}
-
-
-def find_offending(text, allowed, lang):
-    """Numbers in the text that are not in the allowed set, in order, without repeats."""
-    offending = []
-    for token, value in extract_numbers(text, lang):
-        if value not in allowed and token not in offending:
-            offending.append(token)
-    return offending
 
 
 def sentence_count(prose, facts):
@@ -110,21 +81,12 @@ def guarded_brief(facts, lang, generate, max_attempts):
     the attempt produced nothing usable.
     """
     allowed = allowed_numbers(facts)
-    feedback = None
-    for attempt in range(1, max_attempts + 1):
-        draft = generate(feedback)
-        if not draft:
-            continue
-        problems = find_problems(draft, facts, allowed, lang)
-        if not problems:
-            status = "passed" if attempt == 1 else "passed_after_retry"
-            return {"text": draft, "guardrail_status": status, "attempts": attempt}
-        feedback = (draft, problems)
-    return {
-        "text": template_brief(facts, lang),
-        "guardrail_status": "template_fallback",
-        "attempts": max_attempts,
-    }
+    return guarded_generate(
+        generate,
+        check=lambda draft: find_problems(draft, facts, allowed, lang),
+        fallback=lambda: template_brief(facts, lang),
+        max_attempts=max_attempts,
+    )
 
 
 TEMPLATE_TEXT = {

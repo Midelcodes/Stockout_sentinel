@@ -8,4 +8,5 @@ pytest==9.2.0
 python-dotenv==1.2.4
 PyYAML==6.0.3
 scikit-learn==1.9.1
+scipy==1.18.1
 streamlit==1.67.0

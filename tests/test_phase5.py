@@ -11,7 +11,7 @@ from src.io import ROOT, load_config
 from src.pipeline import main
 
 APP = ROOT / "app"
-PAGES = ["Home.py", "pages/1_Facility.py", "pages/2_Transfers.py", "pages/3_Model_card.py"]
+PAGES = ["Home.py", "pages/1_Facility.py", "pages/2_Transfers.py", "pages/3_Budget.py", "pages/4_Ask_the_docs.py", "pages/5_Model_card.py"]
 BANNER = re.compile(r"^Historical data as of \w+ \d{4}\. Demonstration only; not for operational use\.$")
 
 
@@ -193,7 +193,27 @@ def test_facility_page_works_for_every_site_in_both_languages():
 
 @needs_outputs
 def test_model_card_slices_all_render():
-    app = run_page("pages/3_Model_card.py")
+    app = run_page("pages/5_Model_card.py")
     for value in ["volume_tier", "quality_tier", "region", "product_code", "horizon", "origin_month"]:
         app.selectbox[0].set_value(value).run()
         assert not app.exception
+
+
+@needs_outputs
+def test_budget_page_runs_every_budget_and_optimiser_never_loses():
+    app = run_page("pages/3_Budget.py")
+    for share in (5, 25, 50, 100):
+        app.slider[0].set_value(share).run()
+        assert not app.exception
+        resolved = [int(m.value.split(" of ")[0].replace(",", "")) for m in app.metric]
+        assert resolved[0] == max(resolved)
+
+
+@needs_outputs
+def test_ask_the_docs_answers_with_sources_and_admits_misses():
+    app = run_page("pages/4_Ask_the_docs.py")
+    app.text_input[0].set_value("Are the expiry dates real?").run()
+    assert not app.exception
+    assert any("SYNTHETIC" in m.value or "synthetic" in m.value for m in app.markdown)
+    app.text_input[0].set_value("zebra migration patterns").run()
+    assert any("No passage" in w.value for w in app.warning)

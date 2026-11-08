@@ -1,11 +1,15 @@
 """Shared loading, labels and chart settings. The app reads only from outputs/."""
 import json
+import sys
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
-OUTPUTS = Path(__file__).resolve().parents[1] / "outputs"
+ROOT = Path(__file__).resolve().parents[1]
+OUTPUTS = ROOT / "outputs"
+if str(ROOT) not in sys.path:  # lets pages import src/ and llm_number_guardrail/
+    sys.path.insert(0, str(ROOT))
 
 # Most to least urgent. Colors are state colors, and every use carries a text code too.
 LABELS = {
